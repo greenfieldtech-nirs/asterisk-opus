@@ -1,14 +1,22 @@
-#Asterisk Opus/VP8 patch
-=======================
+#Asterisk Opus/VP8 patches
+==========================
 
-Since Opus and VP8 cannot, as of now, be integrated in the Asterisk repositories (learn why in this [thread](http://lists.digium.com/pipermail/asterisk-dev/2013-May/060356.html)), we prepared a patch that adds support for both codecs (Opus transcoding, VP8 passthrough) to [Asterisk 11.1.2](http://downloads.asterisk.org/pub/telephony/asterisk/releases/).
+The following project is based upon the original work of [@meetecho](https://github.com/meetecho) - who created a patch to support Opus Transcoding and VP8 Passthrough with Asterisk 11.1.2. Since the inception of the original patch, Asterisk had progressed, however, the original patch hadn't.
+
+The puporse of this project will be to forward patch the original work to new versions and maybe even add support for future versions of Asterisk 12 and greater.
+
+Since Opus and VP8 cannot, as of now, be integrated in the Asterisk repositories (learn why in this [thread](http://lists.digium.com/pipermail/asterisk-dev/2013-May/060356.html)).
+
+The patch name contains the name of the Asterisk version it is compatible with, so pay attention to what you download.
 
 ##Installing the patch
 To support Opus, you'll need to install [libopus](http://www.opus-codec.org/downloads/) first. No library is needed for VP8, as its support is passthrough only.
 
 The patch was built on top of Asterisk 11.1.2: applying it on different versions may or may not work out of the box, but solving conflicts shouldn't be too hard anyway. Copy it in the Asterisk source folder and apply it:
 
-	patch -p1 -u < asterisk_opus+vp8.diff
+	**For Asterisk 11.1.2:** patch -p1 -u < asterisk-11.1.2_opus+vp8.diff
+
+	**For Asterisk 11.8.2:** patch -p1 -u < asterisk-11.8.1_opus+vp8.diff
 
 Run the bootstrap script to regenerate the configure:
 
@@ -42,3 +50,5 @@ SDP fmtp parameters related to Opus and defined in [draft-ietf-payload-rtp-opus]
 Found an issue? Solved one? Added something that was missing? Help us make it better!
 
 Developed by [@meetecho](https://github.com/meetecho)
+
+Forward patched by [@greenfieldtech-nirs](https://github.com/greenfieldtech-nirs)
