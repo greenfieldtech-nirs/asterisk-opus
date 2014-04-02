@@ -1,0 +1,1484 @@
+diff -urN asterisk-12.1.1/build_tools/menuselect-deps.in asterisk-12.1.1-opus/build_tools/menuselect-deps.in
+--- asterisk-12.1.1/build_tools/menuselect-deps.in      2013-08-23 17:49:47.000000000 -0400
++++ asterisk-12.1.1-opus/build_tools/menuselect-deps.in 2014-04-02 08:04:54.173993104 -0400
+@@ -42,6 +42,7 @@
+ NEON29=@PBX_NEON29@
+ OGG=@PBX_OGG@
+ OPENH323=@PBX_OPENH323@
++OPUS=@PBX_OPUS@
+ OSPTK=@PBX_OSPTK@
+ OSS=@PBX_OSS@
+ PGSQL=@PBX_PGSQL@
+diff -urN asterisk-12.1.1/channels/chan_sip.c asterisk-12.1.1-opus/channels/chan_sip.c
+--- asterisk-12.1.1/channels/chan_sip.c 2014-03-10 14:20:42.000000000 -0400
++++ asterisk-12.1.1-opus/channels/chan_sip.c    2014-04-02 08:04:54.188994567 -0400
+@@ -11242,7 +11242,7 @@
+                struct ast_format *format;
+ 
+                if ((format = ast_rtp_codecs_get_payload_format(newaudiortp, codec))) {
+-                       unsigned int bit_rate;
++                       unsigned int bit_rate, value;
+ 
+                        if (!ast_format_sdp_parse(format, fmtp_string)) {
+                                found = TRUE;
+@@ -11281,6 +11281,53 @@
+                                        }
+                                }
+                                break;
++                       /* Opus SDP fmtp parameters (draft-ietf-payload-rtp-opus-00) */
++                       case AST_FORMAT_OPUS:
++                               if (sscanf(fmtp_string, "maxplaybackrate=%30u", &value) == 1) {
++                                       ast_log(LOG_WARNING, "Got Opus maxplaybackrate=%d\n", value);
++                                       /* TODO: actually handle this */
++                                       found = TRUE;
++                               }
++                               if (sscanf(fmtp_string, "sprop-maxcapturerate=%30u", &value) == 1) {
++                                       ast_log(LOG_WARNING, "Got Opus sprop-maxcapturerate=%d\n", value);
++                                       /* TODO: actually handle this */
++                                       found = TRUE;
++                               }
++                               if (sscanf(fmtp_string, "minptime=%30u", &value) == 1) {
++                                       ast_log(LOG_WARNING, "Got Opus minptime=%d\n", value);
++                                       /* TODO: actually handle this */
++                                       found = TRUE;
++                               }
++                               if (sscanf(fmtp_string, "maxaveragebitrate=%30u", &value) == 1) {
++                                       ast_log(LOG_WARNING, "Got Opus maxaveragebitrate=%d\n", value);
++                                       /* TODO: actually handle this */
++                                       found = TRUE;
++                               }
++                               if (sscanf(fmtp_string, "stereo=%30u", &value) == 1) {
++                                       ast_log(LOG_WARNING, "Got Opus stereo=%d\n", value);
++                                       /* TODO: actually handle this */
++                                       found = TRUE;
++                               }
++                               if (sscanf(fmtp_string, "sprop-stereo=%30u", &value) == 1) {
++                                       ast_log(LOG_WARNING, "Got Opus sprop-stereo=%d\n", value);
++                                       /* TODO: actually handle this */
++                                       found = TRUE;
++                               }
++                               if (sscanf(fmtp_string, "cbr=%30u", &value) == 1) {
++                                       ast_log(LOG_WARNING, "Got Opus cbr=%d\n", value);
++                                       /* TODO: actually handle this */
++                                       found = TRUE;
++                               }
++                               if (sscanf(fmtp_string, "useinbandfec=%30u", &value) == 1) {
++                                       ast_log(LOG_WARNING, "Got Opus useinbandfec=%d\n", value);
++                                       /* TODO: actually handle this */
++                                       found = TRUE;
++                               }
++                               if (sscanf(fmtp_string, "usedtx=%30u", &value) == 1) {
++                                       ast_log(LOG_WARNING, "Got Opus usedtx=%d\n", value);
++                                       /* TODO: actually handle this */
++                                       found = TRUE;
++                               }
+                        }
+                }
+        }
+@@ -12934,6 +12981,17 @@
+                /* Indicate that we only expect 64Kbps */
+                ast_str_append(a_buf, 0, "a=fmtp:%d bitrate=64000\r\n", rtp_code);
+                break;
++       /* Opus, pass parameters we care about (FIXME could this be 'fb' and not 'wb'?) */
++       case AST_FORMAT_OPUS:
++               ast_str_append(a_buf, 0, "a=maxptime:%d\r\n", 60);      /* FIXME */
++               ast_str_append(a_buf, 0, "a=fmtp:%d maxplaybackrate=%d; stereo=%d; sprop-stereo=%d; useinbandfec=%d\r\n",
++                               rtp_code,
++                               16000,  /* maxplaybackrate */
++                               0,              /* stereo */
++                               0,              /* sprop-stereo */
++                               0               /* useinbandfec FIXME */
++               );
++               break;
+        }
+ 
+        if (max_packet_size && fmt.max_ms && (fmt.max_ms < *max_packet_size)) {
+diff -urN asterisk-12.1.1/.cleancount asterisk-12.1.1-opus/.cleancount
+--- asterisk-12.1.1/.cleancount 2012-06-29 12:42:32.000000000 -0400
++++ asterisk-12.1.1-opus/.cleancount    1969-12-31 19:00:00.000000000 -0500
+@@ -1 +0,0 @@
+-40
+diff -urN asterisk-12.1.1/codecs/codec_opus.c asterisk-12.1.1-opus/codecs/codec_opus.c
+--- asterisk-12.1.1/codecs/codec_opus.c 1969-12-31 19:00:00.000000000 -0500
++++ asterisk-12.1.1-opus/codecs/codec_opus.c    2014-04-02 08:04:54.189994652 -0400
+@@ -0,0 +1,529 @@
++/*
++ * Asterisk -- An open source telephony toolkit.
++ *
++ * Copyright (C) 1999 - 2005, Digium, Inc.
++ *
++ * Mark Spencer <markster@digium.com>
++ *
++ *
++ * See http://www.asterisk.org for more information about
++ * the Asterisk project. Please do not directly contact
++ * any of the maintainers of this project for assistance;
++ * the project provides a web site, mailing lists and IRC
++ * channels for your use.
++ *
++ * This program is free software, distributed under the terms of
++ * the GNU General Public License Version 2. See the LICENSE file
++ * at the top of the source tree.
++ */
++
++/*! \file
++ *
++ * \brief Translate between signed linear and Opus (Open Codec)
++ *
++ * \author Lorenzo Miniero <lorenzo@meetecho.com>
++ *
++ * \note This work was motivated by Mozilla
++ * 
++ * \ingroup codecs
++ *
++ * \extref The Opus library - http://opus-codec.org
++ *
++ */
++
++/*** MODULEINFO
++       <depend>opus</depend>
++       <support_level>core</support_level>
++ ***/
++
++#include "asterisk.h"
++
++ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
++
++#include <opus/opus.h>
++
++#include "asterisk/translate.h"
++#include "asterisk/module.h"
++#include "asterisk/config.h"
++#include "asterisk/utils.h"
++#include "asterisk/cli.h"
++
++
++#define        BUFFER_SAMPLES  8000
++#define        OPUS_SAMPLES    160
++
++#define USE_FEC                        0
++
++
++/* Sample frame data */
++#include "asterisk/slin.h"
++#include "ex_opus.h"
++
++/* FIXME: Test */
++#include "asterisk/file.h"
++
++
++static int encid = 0;
++static int decid = 0;
++
++static int opusdebug = 0;
++
++
++/* Private structures */
++struct opus_coder_pvt {
++       void *opus;     /* May be encoder or decoder */
++       int sampling_rate;
++       int multiplier;
++       int fec;
++
++       int id;
++
++       int16_t buf[BUFFER_SAMPLES];    /* FIXME */
++       int framesize;
++
++       FILE *file;
++};
++
++
++/* Helper methods */
++static int opus_encoder_construct(struct ast_trans_pvt *pvt, int sampling_rate) {
++       if(sampling_rate != 8000 && sampling_rate != 12000 && sampling_rate != 16000 && sampling_rate != 24000 && sampling_rate != 48000)
++               return -1;
++       struct opus_coder_pvt *opvt = pvt->pvt;
++       opvt->sampling_rate = sampling_rate;
++       opvt->multiplier = 48000/sampling_rate;
++       opvt->fec = USE_FEC;
++       int error = 0;
++       opvt->opus = opus_encoder_create(sampling_rate, 1, OPUS_APPLICATION_VOIP, &error);
++       if(error != OPUS_OK) {
++               if(opusdebug)
++                       ast_verbose("[Opus] Ops! got an error creating the Opus encoder: %d (%s)\n", error, opus_strerror(error));
++               return -1;
++       }
++       if(sampling_rate == 8000)
++               opus_encoder_ctl(opvt->opus, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_NARROWBAND));
++       else if(sampling_rate == 12000)
++               opus_encoder_ctl(opvt->opus, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_MEDIUMBAND));
++       else if(sampling_rate == 16000)
++               opus_encoder_ctl(opvt->opus, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
++       else if(sampling_rate == 24000)
++               opus_encoder_ctl(opvt->opus, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_SUPERWIDEBAND));
++       else if(sampling_rate == 48000)
++               opus_encoder_ctl(opvt->opus, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_FULLBAND));
++       opus_encoder_ctl(opvt->opus, OPUS_SET_INBAND_FEC(opvt->fec));
++       opvt->framesize = sampling_rate/50;
++       opvt->id = ++encid;
++       if(opusdebug)
++               ast_verbose("[Opus] Created encoder #%d (%d->opus)\n", opvt->id, sampling_rate);
++
++       return 0;
++}
++
++static int opus_decoder_construct(struct ast_trans_pvt *pvt, int sampling_rate) {
++       if(sampling_rate != 8000 && sampling_rate != 12000 && sampling_rate != 16000 && sampling_rate != 24000 && sampling_rate != 48000)
++               return -1;
++       struct opus_coder_pvt *opvt = pvt->pvt;
++       opvt->sampling_rate = sampling_rate;
++       opvt->multiplier = 48000/sampling_rate;
++       opvt->fec = USE_FEC;    /* FIXME: should be triggered by chan_sip */
++       int error = 0;
++       opvt->opus = opus_decoder_create(sampling_rate, 1, &error);
++       if(error != OPUS_OK) {
++               if(opusdebug)
++                       ast_verbose("[Opus] Ops! got an error creating the Opus decoder: %d (%s)\n", error, opus_strerror(error));
++               return -1;
++       }
++       opvt->id = ++decid;
++       if(opusdebug)
++               ast_verbose("[Opus] Created decoder #%d (opus->%d)\n", opvt->id, sampling_rate);
++
++       if(opusdebug > 1) {
++               char filename[50];
++               sprintf(filename, "/home/lminiero/opusdec-%04d-%d.raw", opvt->id, opvt->sampling_rate);
++               opvt->file = fopen(filename, "wb");
++       }
++
++       return 0;
++}
++
++/* Translator callbacks */
++static int lintoopus_new(struct ast_trans_pvt *pvt) {
++       return opus_encoder_construct(pvt, 8000);
++}
++
++static int lin12toopus_new(struct ast_trans_pvt *pvt) {
++       return opus_encoder_construct(pvt, 12000);
++}
++
++static int lin16toopus_new(struct ast_trans_pvt *pvt) {
++       return opus_encoder_construct(pvt, 16000);
++}
++
++static int lin24toopus_new(struct ast_trans_pvt *pvt) {
++       return opus_encoder_construct(pvt, 24000);
++}
++
++static int lin48toopus_new(struct ast_trans_pvt *pvt) {
++       return opus_encoder_construct(pvt, 48000);
++}
++
++static int opustolin_new(struct ast_trans_pvt *pvt) {
++       return opus_decoder_construct(pvt, 8000);
++}
++
++static int opustolin12_new(struct ast_trans_pvt *pvt) {
++       return opus_decoder_construct(pvt, 12000);
++}
++
++static int opustolin16_new(struct ast_trans_pvt *pvt) {
++       return opus_decoder_construct(pvt, 16000);
++}
++
++static int opustolin24_new(struct ast_trans_pvt *pvt) {
++       return opus_decoder_construct(pvt, 24000);
++}
++
++static int opustolin48_new(struct ast_trans_pvt *pvt) {
++       return opus_decoder_construct(pvt, 48000);
++}
++
++static int lintoopus_framein(struct ast_trans_pvt *pvt, struct ast_frame *f) {
++       struct opus_coder_pvt *opvt = pvt->pvt;
++
++       /* XXX We should look at how old the rest of our stream is, and if it
++          is too old, then we should overwrite it entirely, otherwise we can
++          get artifacts of earlier talk that do not belong */
++       memcpy(opvt->buf + pvt->samples, f->data.ptr, f->datalen);
++       pvt->samples += f->samples;
++
++       return 0;
++}
++
++static struct ast_frame *lintoopus_frameout(struct ast_trans_pvt *pvt) {
++       struct opus_coder_pvt *opvt = pvt->pvt;
++
++       /* We can't work on anything less than a frame in size */
++       if (pvt->samples < opvt->framesize)
++               return NULL;
++
++       int datalen = 0;        /* output bytes */
++       int samples = 0;        /* output samples */
++
++       /* Encode 160 samples (or more if it's not narrowband) */
++       if(opusdebug > 1)
++               ast_verbose("[Opus] [Encoder #%d (%d)] %d samples, %d bytes\n", opvt->id, opvt->sampling_rate, opvt->framesize, opvt->framesize*2);
++       datalen = opus_encode(opvt->opus, opvt->buf, opvt->framesize, pvt->outbuf.uc, BUFFER_SAMPLES);
++       if(datalen < 0) {
++               if(opusdebug)
++                       ast_verbose("[Opus] Ops! got an error encoding the Opus frame: %d (%s)\n", datalen, opus_strerror(datalen));
++               return NULL;
++       }
++       samples += opvt->framesize;
++       pvt->samples -= opvt->framesize;
++       /* Move the data at the end of the buffer to the front */
++       if (pvt->samples)
++               memmove(opvt->buf, opvt->buf + samples, pvt->samples * 2);
++
++       if(opusdebug > 1)
++               ast_verbose("[Opus] [Encoder #%d (%d)]   >> Got %d samples, %d bytes\n", opvt->id, opvt->sampling_rate, opvt->multiplier*samples, datalen);
++
++       if(opvt->file)
++               fwrite(opvt->buf, sizeof(int16_t), opvt->multiplier*samples, opvt->file);
++
++       return ast_trans_frameout(pvt, datalen, opvt->multiplier*samples);
++}
++
++static int opustolin_framein(struct ast_trans_pvt *pvt, struct ast_frame *f) {
++       struct opus_coder_pvt *opvt = pvt->pvt;
++       /* Decode */
++       if(opusdebug > 1)
++               ast_verbose("[Opus] [Decoder #%d (%d)] %d samples, %d bytes\n", opvt->id, opvt->sampling_rate, f->samples, f->datalen);
++       int error = opus_decode(opvt->opus, f->data.ptr, f->datalen, pvt->outbuf.i16, BUFFER_SAMPLES, opvt->fec);
++       if(error < 0) {
++               if(opusdebug)
++                       ast_verbose("[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", error, opus_strerror(error));
++               return -1;
++       }
++       pvt->samples += error;
++       pvt->datalen += error*2;
++
++       if(opusdebug > 1)
++               ast_verbose("[Opus] [Decoder #%d (%d)]   >> Got %d samples, %d bytes\n", opvt->id, opvt->sampling_rate, pvt->samples, pvt->datalen);
++
++       if(opvt->file)
++               fwrite(pvt->outbuf.i16, sizeof(int16_t), pvt->samples, opvt->file);
++
++       return 0;
++}
++
++static void lintoopus_destroy(struct ast_trans_pvt *arg) {
++       struct opus_coder_pvt *opvt = arg->pvt;
++       if(opvt == NULL || opvt->opus == NULL)
++               return;
++       opus_encoder_destroy(opvt->opus);
++       if(opusdebug)
++               ast_verbose("[Opus] Destroyed encoder #%d (%d->opus)\n", opvt->id, opvt->sampling_rate);
++       opvt->opus = NULL;
++
++       if(opvt->file)
++               fclose(opvt->file);
++       opvt->file = NULL;
++}
++
++static void opustolin_destroy(struct ast_trans_pvt *arg) {
++       struct opus_coder_pvt *opvt = arg->pvt;
++       if(opvt == NULL || opvt->opus == NULL)
++               return;
++       opus_decoder_destroy(opvt->opus);
++       if(opusdebug)
++               ast_verbose("[Opus] Destroyed decoder #%d (opus->%d)\n", opvt->id, opvt->sampling_rate);
++       opvt->opus = NULL;
++
++       if(opvt->file)
++               fclose(opvt->file);
++       opvt->file = NULL;
++}
++
++
++/* Translators */
++static struct ast_translator lintoopus = {
++       .name = "lintoopus", 
++       .newpvt = lintoopus_new,
++       .framein = lintoopus_framein,
++       .frameout = lintoopus_frameout,
++       .destroy = lintoopus_destroy,
++       .sample = slin8_sample,
++       .desc_size = sizeof(struct opus_coder_pvt),
++       .buffer_samples = BUFFER_SAMPLES,
++       .buf_size = BUFFER_SAMPLES * 2,
++};
++
++static struct ast_translator lin12toopus = {
++       .name = "lin12toopus", 
++       .newpvt = lin12toopus_new,
++       .framein = lintoopus_framein,
++       .frameout = lintoopus_frameout,
++       .destroy = lintoopus_destroy,
++       .desc_size = sizeof(struct opus_coder_pvt),
++       .buffer_samples = BUFFER_SAMPLES,
++       .buf_size = BUFFER_SAMPLES * 2,
++};
++
++static struct ast_translator lin16toopus = {
++       .name = "lin16toopus", 
++       .newpvt = lin16toopus_new,
++       .framein = lintoopus_framein,
++       .frameout = lintoopus_frameout,
++       .destroy = lintoopus_destroy,
++       .sample = slin16_sample,
++       .desc_size = sizeof(struct opus_coder_pvt),
++       .buffer_samples = BUFFER_SAMPLES,
++       .buf_size = BUFFER_SAMPLES * 2,
++};
++
++static struct ast_translator lin24toopus = {
++       .name = "lin24toopus", 
++       .newpvt = lin24toopus_new,
++       .framein = lintoopus_framein,
++       .frameout = lintoopus_frameout,
++       .destroy = lintoopus_destroy,
++       .desc_size = sizeof(struct opus_coder_pvt),
++       .buffer_samples = BUFFER_SAMPLES,
++       .buf_size = BUFFER_SAMPLES * 2,
++};
++
++static struct ast_translator lin48toopus = {
++       .name = "lin48toopus", 
++       .newpvt = lin48toopus_new,
++       .framein = lintoopus_framein,
++       .frameout = lintoopus_frameout,
++       .destroy = lintoopus_destroy,
++       .desc_size = sizeof(struct opus_coder_pvt),
++       .buffer_samples = BUFFER_SAMPLES,
++       .buf_size = BUFFER_SAMPLES * 2,
++};
++
++static struct ast_translator opustolin = {
++       .name = "opustolin", 
++       .newpvt = opustolin_new,
++       .framein = opustolin_framein,
++       .destroy = opustolin_destroy,
++       .sample = opus_sample,
++       .desc_size = sizeof(struct opus_coder_pvt),
++       .buffer_samples = BUFFER_SAMPLES,
++       .buf_size = BUFFER_SAMPLES * 2,
++       .native_plc = 1,        /* FIXME: needed? */
++};
++
++static struct ast_translator opustolin12 = {
++       .name = "opustolin12", 
++       .newpvt = opustolin12_new,
++       .framein = opustolin_framein,
++       .destroy = opustolin_destroy,
++       .sample = opus_sample,
++       .desc_size = sizeof(struct opus_coder_pvt),
++       .buffer_samples = BUFFER_SAMPLES,
++       .buf_size = BUFFER_SAMPLES * 2,
++       .native_plc = 1,        /* FIXME: needed? */
++};
++
++static struct ast_translator opustolin16 = {
++       .name = "opustolin16", 
++       .newpvt = opustolin16_new,
++       .framein = opustolin_framein,
++       .destroy = opustolin_destroy,
++       .sample = opus_sample,
++       .desc_size = sizeof(struct opus_coder_pvt),
++       .buffer_samples = BUFFER_SAMPLES,
++       .buf_size = BUFFER_SAMPLES * 2,
++       .native_plc = 1,        /* FIXME: needed? */
++};
++
++static struct ast_translator opustolin24 = {
++       .name = "opustolin24", 
++       .newpvt = opustolin24_new,
++       .framein = opustolin_framein,
++       .destroy = opustolin_destroy,
++       .sample = opus_sample,
++       .desc_size = sizeof(struct opus_coder_pvt),
++       .buffer_samples = BUFFER_SAMPLES,
++       .buf_size = BUFFER_SAMPLES * 2,
++       .native_plc = 1,        /* FIXME: needed? */
++};
++
++static struct ast_translator opustolin48 = {
++       .name = "opustolin48", 
++       .newpvt = opustolin48_new,
++       .framein = opustolin_framein,
++       .destroy = opustolin_destroy,
++       .sample = opus_sample,
++       .desc_size = sizeof(struct opus_coder_pvt),
++       .buffer_samples = BUFFER_SAMPLES,
++       .buf_size = BUFFER_SAMPLES * 2,
++       .native_plc = 1,        /* FIXME: needed? */
++};
++
++
++/* Simple CLI interface to enable/disable debugging */
++static char *handle_cli_opus_set_debug(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
++{
++       switch (cmd) {
++       case CLI_INIT:
++               e->command = "opus set debug";
++               e->usage =
++                       "Usage: opus set debug {status|none|normal|huge}\n"
++                       "       Enable/Disable Opus debugging: normal only debugs setup and errors, huge debugs every single packet\n";
++               return NULL;
++       case CLI_GENERATE:
++               return NULL;
++       }
++
++       if (a->argc != 4)
++               return CLI_SHOWUSAGE;
++
++       if (!strncasecmp(a->argv[a->argc-1], "status", 6)) {
++               ast_cli(a->fd, "Opus debugging %s\n", opusdebug > 1 ? "huge" : opusdebug > 0 ? "normal" : "none");
++               return CLI_SUCCESS;
++       }
++       if (!strncasecmp(a->argv[a->argc-1], "huge", 4))
++               opusdebug = 2;
++       else if (!strncasecmp(a->argv[a->argc-1], "normal", 6))
++               opusdebug = 1;
++       else if (!strncasecmp(a->argv[a->argc-1], "none", 4))
++               opusdebug = 0;
++       else
++               return CLI_SHOWUSAGE;
++
++       ast_cli(a->fd, "Opus debugging %s\n", opusdebug > 1 ? "huge" : opusdebug > 0 ? "normal" : "none");
++       return CLI_SUCCESS;
++}
++
++static struct ast_cli_entry cli_opus[] = {
++       AST_CLI_DEFINE(handle_cli_opus_set_debug, "Enable/Disable Opus debugging"),
++};
++
++
++/* Configuration and module setup */
++static int parse_config(int reload) {
++       /* TODO: place stuff to negotiate/enforce here */
++       return 0;
++}
++
++static int reload(void) {
++       if(parse_config(1))
++               return AST_MODULE_LOAD_DECLINE;
++       return AST_MODULE_LOAD_SUCCESS;
++}
++
++static int unload_module(void) {
++       int res = 0;
++
++       res |= ast_unregister_translator(&opustolin);
++       res |= ast_unregister_translator(&lintoopus);
++       res |= ast_unregister_translator(&opustolin12);
++       res |= ast_unregister_translator(&lin12toopus);
++       res |= ast_unregister_translator(&opustolin16);
++       res |= ast_unregister_translator(&lin16toopus);
++       res |= ast_unregister_translator(&opustolin24);
++       res |= ast_unregister_translator(&lin24toopus);
++       res |= ast_unregister_translator(&opustolin48);
++       res |= ast_unregister_translator(&lin48toopus);
++
++       ast_cli_unregister_multiple(cli_opus, ARRAY_LEN(cli_opus));
++
++       return res;
++}
++
++static int load_module(void) {
++       int res = 0;
++
++       if(parse_config(0))
++               return AST_MODULE_LOAD_DECLINE;
++
++       /* 8khz (nb) */
++       ast_format_set(&opustolin.src_format, AST_FORMAT_OPUS, 0);
++       ast_format_set(&opustolin.dst_format, AST_FORMAT_SLINEAR, 0);
++       ast_format_set(&lintoopus.src_format, AST_FORMAT_SLINEAR, 0);
++       ast_format_set(&lintoopus.dst_format, AST_FORMAT_OPUS, 0);
++       /* 12khz (mb) */
++       ast_format_set(&opustolin12.src_format, AST_FORMAT_OPUS, 0);
++       ast_format_set(&opustolin12.dst_format, AST_FORMAT_SLINEAR12, 0);
++       ast_format_set(&lin12toopus.src_format, AST_FORMAT_SLINEAR12, 0);
++       ast_format_set(&lin12toopus.dst_format, AST_FORMAT_OPUS, 0);
++       /* 16khz (wb) */
++       ast_format_set(&opustolin16.src_format, AST_FORMAT_OPUS, 0);
++       ast_format_set(&opustolin16.dst_format, AST_FORMAT_SLINEAR16, 0);
++       ast_format_set(&lin16toopus.src_format, AST_FORMAT_SLINEAR16, 0);
++       ast_format_set(&lin16toopus.dst_format, AST_FORMAT_OPUS, 0);
++       /* 24khz (swb) */
++       ast_format_set(&opustolin24.src_format, AST_FORMAT_OPUS, 0);
++       ast_format_set(&opustolin24.dst_format, AST_FORMAT_SLINEAR24, 0);
++       ast_format_set(&lin24toopus.src_format, AST_FORMAT_SLINEAR24, 0);
++       ast_format_set(&lin24toopus.dst_format, AST_FORMAT_OPUS, 0);
++       /* 48khz (fb) */
++       ast_format_set(&opustolin48.src_format, AST_FORMAT_OPUS, 0);
++       ast_format_set(&opustolin48.dst_format, AST_FORMAT_SLINEAR48, 0);
++       ast_format_set(&lin48toopus.src_format, AST_FORMAT_SLINEAR48, 0);
++       ast_format_set(&lin48toopus.dst_format, AST_FORMAT_OPUS, 0);
++
++       res |= ast_register_translator(&opustolin);
++       res |= ast_register_translator(&lintoopus);
++       res |= ast_register_translator(&opustolin12);
++       res |= ast_register_translator(&lin12toopus);
++       res |= ast_register_translator(&opustolin16);
++       res |= ast_register_translator(&lin16toopus);
++       res |= ast_register_translator(&opustolin24);
++       res |= ast_register_translator(&lin24toopus);
++       res |= ast_register_translator(&opustolin48);
++       res |= ast_register_translator(&lin48toopus);
++
++       ast_cli_register_multiple(cli_opus, sizeof(cli_opus) / sizeof(struct ast_cli_entry));
++
++       return res;
++}
++
++AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "Opus Coder/Decoder",
++               .load = load_module,
++               .unload = unload_module,
++               .reload = reload,
++              );
+diff -urN asterisk-12.1.1/codecs/ex_opus.h asterisk-12.1.1-opus/codecs/ex_opus.h
+--- asterisk-12.1.1/codecs/ex_opus.h    1969-12-31 19:00:00.000000000 -0500
++++ asterisk-12.1.1-opus/codecs/ex_opus.h       2014-04-02 08:04:54.189994652 -0400
+@@ -0,0 +1,35 @@
++/*! \file
++ * \brief 8-bit data
++ *
++ * Copyright (C) 2008, Digium, Inc.
++ *
++ * Distributed under the terms of the GNU General Public License
++ *
++ */
++
++/* Opus, a 20ms sample */
++static uint8_t ex_opus[] = {
++       0x4b, 0x41, 0x25, 0x0b, 0xe4, 0x55, 0xc6, 0x74,
++       0xda, 0xbb, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00,
++       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++};
++
++static struct ast_frame *opus_sample(void)
++{
++       static struct ast_frame f = {
++               .frametype = AST_FRAME_VOICE,
++               .datalen = sizeof(ex_opus),
++               .samples = 960, //ARRAY_LEN(ex_opus),
++               .mallocd = 0,
++               .offset = 0,
++               .src = __PRETTY_FUNCTION__,
++               .data.ptr = ex_opus,
++       };
++
++       ast_format_set(&f.subclass.format, AST_FORMAT_OPUS, 0);
++
++       return &f;
++}
+diff -urN asterisk-12.1.1/default.exports asterisk-12.1.1-opus/default.exports
+--- asterisk-12.1.1/default.exports     2013-08-22 04:26:55.000000000 -0400
++++ asterisk-12.1.1-opus/default.exports        1969-12-31 19:00:00.000000000 -0500
+@@ -1,8 +0,0 @@
+-{
+-       global:
+-               /* See main/asterisk.exports.in for an explanation why this is
+-                * needed. */
+-               _IO_stdin_used;
+-       local:
+-               *;
+-};
+diff -urN asterisk-12.1.1/formats/format_vp8.c asterisk-12.1.1-opus/formats/format_vp8.c
+--- asterisk-12.1.1/formats/format_vp8.c        1969-12-31 19:00:00.000000000 -0500
++++ asterisk-12.1.1-opus/formats/format_vp8.c   2014-04-02 08:04:54.190994736 -0400
+@@ -0,0 +1,195 @@
++/*
++ * Asterisk -- An open source telephony toolkit.
++ *
++ * Copyright (C) 1999 - 2005, Digium, Inc.
++ *
++ * Mark Spencer <markster@digium.com>
++ *
++ * See http://www.asterisk.org for more information about
++ * the Asterisk project. Please do not directly contact
++ * any of the maintainers of this project for assistance;
++ * the project provides a web site, mailing lists and IRC
++ * channels for your use.
++ *
++ * This program is free software, distributed under the terms of
++ * the GNU General Public License Version 2. See the LICENSE file
++ * at the top of the source tree.
++ */
++
++/*! \file
++ *
++ * \brief Save to raw, headerless VP8 data.
++ *
++ * \author Lorenzo Miniero <lorenzo@meetecho.com>
++ *
++ * \note Basically a "clone" of the H.264 passthrough format
++ * 
++ * \arg File name extension: VP8
++ * \ingroup formats
++ * \arg See \ref AstVideo
++ */
++
++/*** MODULEINFO
++       <support_level>core</support_level>
++ ***/
++ 
++#include "asterisk.h"
++
++ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
++
++#include "asterisk/mod_format.h"
++#include "asterisk/module.h"
++#include "asterisk/endian.h"
++
++/* VP8 passthrough */
++
++#define BUF_SIZE       4096
++struct vp8_desc {
++       unsigned int lastts;
++};
++
++static int vp8_open(struct ast_filestream *s)
++{
++       unsigned int ts;
++       if (fread(&ts, 1, sizeof(ts), s->f) < sizeof(ts)) {
++               ast_log(LOG_WARNING, "Empty file!\n");
++               return -1;
++       }
++       return 0;
++}
++
++static struct ast_frame *vp8_read(struct ast_filestream *s, int *whennext)
++{
++       int res;
++       int mark = 0;
++       unsigned short len;
++       unsigned int ts;
++       struct vp8_desc *fs = (struct vp8_desc *)s->_private;
++
++       /* Send a frame from the file to the appropriate channel */
++       if ((res = fread(&len, 1, sizeof(len), s->f)) < 1)
++               return NULL;
++       len = ntohs(len);
++       mark = (len & 0x8000) ? 1 : 0;
++       len &= 0x7fff;
++       if (len > BUF_SIZE) {
++               ast_log(LOG_WARNING, "Length %d is too long\n", len);
++               len = BUF_SIZE; /* XXX truncate */
++       }
++       s->fr.frametype = AST_FRAME_VIDEO;
++       ast_format_set(&s->fr.subclass.format, AST_FORMAT_VP8, 0);
++       s->fr.mallocd = 0;
++       AST_FRAME_SET_BUFFER(&s->fr, s->buf, AST_FRIENDLY_OFFSET, len);
++       if ((res = fread(s->fr.data.ptr, 1, s->fr.datalen, s->f)) != s->fr.datalen) {
++               if (res)
++                       ast_log(LOG_WARNING, "Short read (%d of %d) (%s)!\n", res, len, strerror(errno));
++               return NULL;
++       }
++       s->fr.samples = fs->lastts;
++       s->fr.datalen = len;
++    if (mark) {
++               ast_format_set_video_mark(&s->fr.subclass.format);
++       }
++       s->fr.delivery.tv_sec = 0;
++       s->fr.delivery.tv_usec = 0;
++       if ((res = fread(&ts, 1, sizeof(ts), s->f)) == sizeof(ts)) {
++               fs->lastts = ntohl(ts);
++               *whennext = fs->lastts * 4/45;
++       } else
++               *whennext = 0;
++       return &s->fr;
++}
++
++static int vp8_write(struct ast_filestream *s, struct ast_frame *f)
++{
++       int res;
++       unsigned int ts;
++       unsigned short len;
++       int mark;
++
++       if (f->frametype != AST_FRAME_VIDEO) {
++               ast_log(LOG_WARNING, "Asked to write non-video frame!\n");
++               return -1;
++       }
++       mark = ast_format_get_video_mark(&f->subclass.format) ? 0x8000 : 0;
++       if (f->subclass.format.id != AST_FORMAT_VP8) {
++               ast_log(LOG_WARNING, "Asked to write non-VP8 frame (%s)!\n", ast_getformatname(&f->subclass.format));
++               return -1;
++       }
++       ts = htonl(f->samples);
++       if ((res = fwrite(&ts, 1, sizeof(ts), s->f)) != sizeof(ts)) {
++               ast_log(LOG_WARNING, "Bad write (%d/4): %s\n", res, strerror(errno));
++               return -1;
++       }
++       len = htons(f->datalen | mark);
++       if ((res = fwrite(&len, 1, sizeof(len), s->f)) != sizeof(len)) {
++               ast_log(LOG_WARNING, "Bad write (%d/2): %s\n", res, strerror(errno));
++               return -1;
++       }
++       if ((res = fwrite(f->data.ptr, 1, f->datalen, s->f)) != f->datalen) {
++               ast_log(LOG_WARNING, "Bad write (%d/%d): %s\n", res, f->datalen, strerror(errno));
++               return -1;
++       }
++       return 0;
++}
++
++static int vp8_seek(struct ast_filestream *fs, off_t sample_offset, int whence)
++{
++       /* No way Jose */
++       return -1;
++}
++
++static int vp8_trunc(struct ast_filestream *fs)
++{
++       int fd;
++       off_t cur;
++
++       if ((fd = fileno(fs->f)) < 0) {
++               ast_log(AST_LOG_WARNING, "Unable to determine file descriptor for VP8 filestream %p: %s\n", fs, strerror(errno));
++               return -1;
++       }
++       if ((cur = ftello(fs->f)) < 0) {
++               ast_log(AST_LOG_WARNING, "Unable to determine current position in VP8 filestream %p: %s\n", fs, strerror(errno));
++               return -1;
++       }
++       /* Truncate file to current length */
++       return ftruncate(fd, cur);
++}
++
++static off_t vp8_tell(struct ast_filestream *fs)
++{
++       off_t offset = ftell(fs->f);
++       return offset; /* XXX totally bogus, needs fixing */
++}
++
++static struct ast_format_def vp8_f = {
++       .name = "VP8",
++       .exts = "vp8",
++       .open = vp8_open,
++       .write = vp8_write,
++       .seek = vp8_seek,
++       .trunc = vp8_trunc,
++       .tell = vp8_tell,
++       .read = vp8_read,
++       .buf_size = BUF_SIZE + AST_FRIENDLY_OFFSET,
++       .desc_size = sizeof(struct vp8_desc),
++};
++
++static int load_module(void)
++{
++       ast_format_set(&vp8_f.format, AST_FORMAT_VP8, 0);
++       if (ast_format_def_register(&vp8_f))
++               return AST_MODULE_LOAD_FAILURE;
++       return AST_MODULE_LOAD_SUCCESS;
++}
++
++static int unload_module(void)
++{
++       return ast_format_def_unregister(vp8_f.name);
++}
++
++AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Raw VP8 data",
++       .load = load_module,
++       .unload = unload_module,
++       .load_pri = AST_MODPRI_APP_DEPEND
++);
+diff -urN asterisk-12.1.1/.lastclean asterisk-12.1.1-opus/.lastclean
+--- asterisk-12.1.1/.lastclean  2014-02-06 16:35:58.000000000 -0500
++++ asterisk-12.1.1-opus/.lastclean     1969-12-31 19:00:00.000000000 -0500
+@@ -1 +0,0 @@
+-40
+diff -urN asterisk-12.1.1/main/frame.c asterisk-12.1.1-opus/main/frame.c
+--- asterisk-12.1.1/main/frame.c        2014-01-17 16:32:18.000000000 -0500
++++ asterisk-12.1.1-opus/main/frame.c   2014-04-02 08:25:55.307994910 -0400
+@@ -1021,6 +1021,40 @@
+        return cnt;
+ }
+ 
++/* Opus: copied from opus_decoder.c */
++static int opus_samples(unsigned char *data, int len) {
++       /* Do opus_packet_get_nb_frames first */
++       int count, frames;
++       if (len<1) {
++               return 0;       /* FIXME OPUS_BAD_ARG */
++       } else {
++               count = data[0]&0x3;
++               if (count==0)
++                       frames = 1;
++               else if (count!=3)
++                       frames = 2;
++               else if (len<2)
++                       return 0;       /* FIXME OPUS_INVALID_PACKET */
++               else
++                       frames = data[1]&0x3F;
++       }
++       /* The, do a opus_packet_get_samples_per_frame */
++   int audiosize, Fs = 48000;
++   if (data[0]&0x80) {
++      audiosize = ((data[0]>>3)&0x3);
++      audiosize = (Fs<<audiosize)/400;
++   } else if ((data[0]&0x60) == 0x60) {
++      audiosize = (data[0]&0x08) ? Fs/50 : Fs/100;
++   } else {
++      audiosize = ((data[0]>>3)&0x3);
++      if (audiosize == 3)
++         audiosize = Fs*60/1000;
++      else
++         audiosize = (Fs<<audiosize)/100;
++   }
++   return frames*audiosize;
++}
++
+ int ast_codec_get_samples(struct ast_frame *f)
+ {
+        int samples = 0;
+@@ -1102,9 +1136,9 @@
+                /* TODO This assumes 20ms delivery right now, which is incorrect */
+                samples = ast_format_rate(&f->subclass.format) / 50;
+                break;
++       /* Opus */
+        case AST_FORMAT_OPUS:
+-               /* TODO This assumes 20ms delivery right now, which is incorrect */
+-               samples = 960;
++               samples = opus_samples(f->data.ptr, f->datalen);
+                break;
+        default:
+                ast_log(LOG_WARNING, "Unable to calculate samples for format %s\n", ast_getformatname(&f->subclass.format));
+diff -urN asterisk-12.1.1/main/rtp_engine.c asterisk-12.1.1-opus/main/rtp_engine.c
+--- asterisk-12.1.1/main/rtp_engine.c   2014-01-28 11:41:43.000000000 -0500
++++ asterisk-12.1.1-opus/main/rtp_engine.c      2014-04-02 10:33:43.572999567 -0400
+@@ -2035,6 +2035,7 @@
+        /* Opus and VP8 */
+        add_static_payload(100, ast_format_set(&tmpfmt, AST_FORMAT_VP8, 0), 0);
+        add_static_payload(107, ast_format_set(&tmpfmt, AST_FORMAT_OPUS, 0), 0);
++       add_static_payload(125, ast_format_set(&tmpfmt, AST_FORMAT_OPUS, 0), 0);
+ 
+        return 0;
+ }
+diff -urN asterisk-12.1.1/menuselect/mxml/Makefile asterisk-12.1.1-opus/menuselect/mxml/Makefile
+--- asterisk-12.1.1/menuselect/mxml/Makefile    1969-12-31 19:00:00.000000000 -0500
++++ asterisk-12.1.1-opus/menuselect/mxml/Makefile       2014-04-02 08:16:10.649999915 -0400
+@@ -0,0 +1,342 @@
++#
++# "$Id: Makefile.in 23382 2006-04-29 15:44:02Z russell $"
++#
++# Makefile for Mini-XML, a small XML-like file parsing library.
++#
++# Copyright 2003-2005 by Michael Sweet.
++#
++# This program is free software; you can redistribute it and/or
++# modify it under the terms of the GNU Library General Public
++# License as published by the Free Software Foundation; either
++# version 2, or (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++
++#
++# Compiler tools definitions...
++#
++
++AR             =       /usr/bin/ar
++ARFLAGS                =       crvs
++CC             =       gcc
++CFLAGS         =       $(OPTIM) -Wall  
++CP             =       /bin/cp
++DSO            =       :
++DSOFLAGS       =
++LDFLAGS                =       $(OPTIM) 
++INSTALL                =       /usr/bin/install -c
++LIBMXML                =       libmxml.a
++LN             =       /bin/ln -s
++MKDIR          =       /bin/mkdir
++OPTIM          =       -Os -g
++RANLIB         =       ranlib
++RM             =       /bin/rm -f
++SHELL          =       /bin/sh
++
++
++#
++# Configured directories...
++#
++
++prefix         =       /usr/local
++exec_prefix    =       /usr/local
++bindir         =       ${exec_prefix}/bin
++includedir     =       ${prefix}/include
++libdir         =       ${exec_prefix}/lib
++mandir         =       ${datarootdir}/man
++docdir         =       ${datarootdir}/doc/mxml
++datarootdir =  ${prefix}/share
++BUILDROOT      =       $(DSTROOT)
++
++
++#
++# Install commands...
++#
++
++INSTALL_BIN    =       $(LIBTOOL) $(INSTALL) -m 755 -s
++INSTALL_DATA   =       $(INSTALL) -m 644
++INSTALL_DIR    =       $(INSTALL) -d
++INSTALL_LIB    =       $(LIBTOOL) $(INSTALL) -m 755
++INSTALL_MAN    =       $(INSTALL) -m 644
++INSTALL_SCRIPT =       $(INSTALL) -m 755
++
++
++#
++# Rules...
++#
++
++.SUFFIXES:     .0 .1 .3 .c .man .o
++.c.o:
++       $(CC) $(CFLAGS) -c $<
++.man.0 .man.1 .man.3:
++       $(RM) $@
++       $(NROFF) -man $< >$@
++
++
++#
++# Targets...
++#
++
++DOCFILES       =       doc/mxml.html doc/mxmldoc.xsd \
++                       README COPYING CHANGES
++PUBLIBOBJS     =       mxml-attr.o mxml-entity.o mxml-file.o mxml-index.o \
++                       mxml-node.o mxml-search.o mxml-set.o
++LIBOBJS                =       $(PUBLIBOBJS) mxml-private.o mxml-string.o
++OBJS           =       mxmldoc.o testmxml.o $(LIBOBJS)
++TARGETS                =       $(LIBMXML) mxmldoc testmxml mxml.xml
++
++
++#
++# Make everything...
++#
++
++all:           Makefile configure config.h $(TARGETS)
++
++
++#
++# Clean everything...
++#
++
++clean:
++       $(RM) $(OBJS) $(TARGETS)
++       $(RM) mxmldoc-static libmxml.a
++       $(RM) *.bck *.bak
++       $(RM) config.cache config.log config.status config.h
++       $(RM) -r autom4te*.cache
++
++distclean: clean
++       $(RM) mxml.list Makefile
++
++#
++# Install everything...
++#
++
++install:       $(TARGETS) install-$(LIBMXML) install-libmxml.a
++       $(INSTALL_DIR) $(BUILDROOT)$(bindir)
++       $(INSTALL_BIN) mxmldoc $(BUILDROOT)$(bindir) 
++       $(INSTALL_DIR) $(BUILDROOT)$(docdir)
++       for file in $(DOCFILES); do \
++               $(INSTALL_MAN) $$file $(BUILDROOT)$(docdir); \
++       done
++       $(INSTALL_DIR) $(BUILDROOT)$(includedir)
++       $(INSTALL_DATA) mxml.h $(BUILDROOT)$(includedir)
++       $(INSTALL_DIR) $(BUILDROOT)$(libdir)/pkgconfig
++       $(INSTALL_DATA) mxml.pc $(BUILDROOT)$(libdir)/pkgconfig
++       $(INSTALL_DIR) $(BUILDROOT)$(mandir)/cat1
++       $(INSTALL_MAN) doc/mxmldoc.$(CAT1EXT) $(BUILDROOT)$(mandir)/cat1/mxmldoc.$(CAT1EXT)
++       $(INSTALL_DIR) $(BUILDROOT)$(mandir)/cat3
++       $(INSTALL_MAN) doc/mxml.$(CAT3EXT) $(BUILDROOT)$(mandir)/cat3/mxml.$(CAT3EXT)
++       $(INSTALL_DIR) $(BUILDROOT)$(mandir)/man1
++       $(INSTALL_MAN) doc/mxmldoc.man $(BUILDROOT)$(mandir)/man1/mxmldoc.$(MAN1EXT)
++       $(INSTALL_DIR) $(BUILDROOT)$(mandir)/man3
++       $(INSTALL_MAN) doc/mxml.man $(BUILDROOT)$(mandir)/man3/mxml.$(MAN3EXT)
++
++install-libmxml.a:
++       $(INSTALL_DIR) $(BUILDROOT)$(libdir)
++       $(INSTALL_LIB) libmxml.a $(BUILDROOT)$(libdir)
++
++install-libmxml.so.1.0:
++       $(INSTALL_DIR) $(BUILDROOT)$(libdir)
++       $(INSTALL_LIB) libmxml.so.1.0 $(BUILDROOT)$(libdir)
++       $(RM) $(BUILDROOT)$(libdir)/libmxml.so
++       $(LN) libmxml.so.1.0 $(BUILDROOT)$(libdir)/libmxml.so
++       $(RM) $(BUILDROOT)$(libdir)/libmxml.so.1
++       $(LN) libmxml.so.1.0 $(BUILDROOT)$(libdir)/libmxml.so.1
++
++install-libmxml.sl.1:
++       $(INSTALL_DIR) $(BUILDROOT)$(libdir)
++       $(INSTALL_LIB) libmxml.sl.1 $(BUILDROOT)$(libdir)
++       $(RM) $(BUILDROOT)$(libdir)/libmxml.so
++       $(LN) libmxml.sl.1 $(BUILDROOT)$(libdir)/libmxml.sl
++
++install-libmxml.1.dylib:
++       $(INSTALL_DIR) $(BUILDROOT)$(libdir)
++       $(INSTALL_LIB) libmxml.1.dylib $(BUILDROOT)$(libdir)
++       $(RM) $(BUILDROOT)$(libdir)/libmxml.dylib
++       $(LN) libmxml.1.dylib $(BUILDROOT)$(libdir)/libmxml.dylib
++
++
++#
++# Uninstall everything...
++#
++
++uninstall: uninstall-$(LIBMXML) uninstall-libmxml.a
++       $(RM) $(BUILDROOT)$(bindir)/mxmldoc
++       $(RM) -r $(BUILDROOT)$(docdir)
++       $(RM) $(BUILDROOT)$(includedir)/mxml.h
++       $(RM) $(BUILDROOT)$(libdir)/pkgconfig/mxml.pc
++       $(RM) $(BUILDROOT)$(mandir)/cat1/mxmldoc.$(CAT1EXT)
++       $(RM) $(BUILDROOT)$(mandir)/cat3/mxml.$(CAT3EXT)
++       $(RM) $(BUILDROOT)$(mandir)/man1/mxmldoc.$(MAN1EXT)
++       $(RM) $(BUILDROOT)$(mandir)/man3/mxml.$(MAN3EXT)
++
++uninstall-libmxml.a:
++       $(RM) $(BUILDROOT)$(libdir)/libmxml.a
++
++uninstall-libmxml.so.1.0:
++       $(RM) $(BUILDROOT)$(libdir)/libmxml.so
++       $(RM) $(BUILDROOT)$(libdir)/libmxml.so.1
++       $(RM) $(BUILDROOT)$(libdir)/libmxml.so.1.0
++
++uninstall-libmxml.sl.1:
++       $(RM) $(BUILDROOT)$(libdir)/libmxml.sl
++       $(RM) $(BUILDROOT)$(libdir)/libmxml.sl.1
++
++uninstall-libmxml.1.dylib:
++       $(RM) $(BUILDROOT)$(libdir)/libmxml.dylib
++       $(RM) $(BUILDROOT)$(libdir)/libmxml.1.dylib
++
++
++#
++# Make packages using EPM (http://www.easysw.com/epm/)
++#
++
++epm:   all
++       epm --output-dir dist -v -f native mxml
++       epm --output-dir dist -v -f portable mxml
++
++
++#
++# autoconf stuff...
++#
++
++Makefile:      Makefile.in
++       if test -f config.status; then \
++               ./config.status --recheck; \
++               ./config.status; \
++       else \
++               ./configure; \
++       fi
++       touch config.h
++
++
++config.h:      configure config.h.in
++       if test -f config.status; then \
++               ./config.status --recheck; \
++               ./config.status; \
++       else \
++               ./configure; \
++       fi
++       touch config.h
++
++
++#
++# libmxml.a
++#
++
++libmxml.a:     $(LIBOBJS)
++       $(RM) $@
++       $(AR) $(ARFLAGS) $@ $(LIBOBJS)
++       $(RANLIB) $@
++
++$(LIBOBJS):    mxml.h
++
++
++#
++# libmxml.so.1.0
++#
++
++libmxml.so.1.0:        $(LIBOBJS)
++       $(DSO) $(DSOFLAGS) -o libmxml.so.1.0 $(LIBOBJS)
++       $(RM) libmxml.so libmxml.so.1
++       $(LN) libmxml.so.1.0 libmxml.so
++       $(LN) libmxml.so.1.0 libmxml.so.1
++
++
++#
++# libmxml.sl.1
++#
++
++libmxml.sl.1:  $(LIBOBJS)
++       $(DSO) $(DSOFLAGS) -o libmxml.sl.1 $(LIBOBJS)
++       $(RM) libmxml.sl libmxml.sl.1
++       $(LN) libmxml.sl.1 libmxml.sl
++
++
++#
++# libmxml.1.dylib
++#
++
++libmxml.1.dylib:       $(LIBOBJS)
++       $(DSO) $(DSOFLAGS) -o libmxml.1.dylib \
++               -install_name $(libdir)/libmxml.dylib \
++               -current_version 1.0.0 \
++               -compatibility_version 1.0.0 \
++               $(LIBOBJS)
++       $(RM) libmxml.dylib libmxml.1.dylib
++       $(LN) libmxml.1.dylib libmxml.dylib
++
++
++#
++# mxmldoc
++#
++
++mxmldoc:       $(LIBMXML) mxmldoc.o
++       $(CC) $(LDFLAGS) -o $@ mxmldoc.o -L. -lmxml
++
++mxmldoc-static:        libmxml.a mxmldoc.o
++       $(CC) $(LDFLAGS) -o $@ mxmldoc.o libmxml.a
++
++mxmldoc.o:     mxml.h
++
++
++#
++# testmxml
++#
++
++testmxml:      libmxml.a testmxml.o
++       $(CC) $(LDFLAGS) -o $@ testmxml.o libmxml.a
++       @echo Testing library...
++       ./testmxml test.xml >temp1.xml 2>temp1s.xml
++       ./testmxml temp1.xml >temp2.xml 2>temp2s.xml
++       @if cmp temp1.xml temp2.xml; then \
++               echo Stdio file test passed!; \
++               $(RM) temp2.xml temp2s.xml; \
++       else \
++               echo Stdio file test failed!; \
++       fi
++       @if cmp temp1.xml temp1s.xml; then \
++               echo String test passed!; \
++               $(RM) temp1.xml temp1s.xml; \
++       else \
++               echo String test failed!; \
++       fi
++       @if cmp test.xml test.xmlfd; then \
++               echo File descriptor test passed!; \
++               $(RM) test.xmlfd; \
++       else \
++               echo File descriptor test failed!; \
++       fi
++
++testmxml.o:    mxml.h
++
++
++#
++# mxml.xml
++#
++
++mxml.xml:      mxmldoc-static mxml.h $(PUBLIBOBJS:.o=.c)
++       $(RM) mxml.xml
++       ./mxmldoc-static mxml.xml mxml.h $(PUBLIBOBJS:.o=.c) >doc/reference.html
++
++valgrind:      mxmldoc-static
++       $(RM) valgrind.xml
++       valgrind --tool=memcheck --leak-check=yes ./mxmldoc-static \
++               valgrind.xml mxml.h $(PUBLIBOBJS:.o=.c) \
++               >valgrind.html 2>valgrind.out
++
++
++#
++# All object files depend on the makefile...
++#
++
++$(OBJS):       Makefile config.h
++
++
++#
++# End of "$Id: Makefile.in 23382 2006-04-29 15:44:02Z russell $".
++#
+diff -urN asterisk-12.1.1/menuselect/mxml/mxml.list asterisk-12.1.1-opus/menuselect/mxml/mxml.list
+--- asterisk-12.1.1/menuselect/mxml/mxml.list   1969-12-31 19:00:00.000000000 -0500
++++ asterisk-12.1.1-opus/menuselect/mxml/mxml.list      2014-04-02 08:16:10.661999917 -0400
+@@ -0,0 +1,115 @@
++#
++# "$Id: mxml.list.in 22267 2006-04-24 17:11:45Z kpfleming $"
++#
++# EPM software list file for Mini-XML, a small XML library.
++#
++# Copyright 2003-2005 by Michael Sweet.
++#
++# This program is free software; you can redistribute it and/or
++# modify it under the terms of the GNU Library General Public
++# License as published by the Free Software Foundation; either
++# version 2, or (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++
++# Directories...
++$prefix=/usr/local
++$exec_prefix=/usr/local
++$bindir=${exec_prefix}/bin
++$docdir=${datarootdir}/doc/mxml
++$includedir=${prefix}/include
++$libdir=${exec_prefix}/lib
++$mandir=${datarootdir}/man
++$srcdir=.
++$datarootdir=${prefix}/share
++
++$PICFLAG=0
++
++# Product information
++%product mxml
++%copyright 2003-2005 by Michael Sweet
++%vendor Michael Sweet
++%license ${srcdir}/COPYING
++%readme ${srcdir}/README
++%version 2.2.2
++
++%description <<EOF
++Mini-XML is a small XML parsing library that you can use to read
++XML and XML-like data files in your application without
++requiring large non-standard libraries.  Mini-XML provides the
++following functionality:
++
++    - Reading of UTF-8 and UTF-16 and writing of UTF-8 encoded
++      XML files and strings.
++    - Data is stored in a linked-list tree structure, preserving
++      the XML data hierarchy.
++    - Supports arbitrary element names, attributes, and
++      attribute values with no preset limits, just available
++      memory.
++    - Supports integer, real, opaque ("cdata"), and text data
++      types in "leaf" nodes.
++    - Functions for creating and managing trees of data.
++    - "Find" and "walk" functions for easily locating and
++      navigating trees of data.
++
++Mini-XML doesn't do validation or other types of processing on
++the data based upon schema files or other sources of definition
++information, nor does it support character entities other than
++those required by the XML specification.
++EOF
++
++# Manpage extensions...
++$CAT1EXT=@CAT1EXT@
++$CAT3EXT=@CAT3EXT@
++$MAN1EXT=@MAN1EXT@
++$MAN3EXT=@MAN3EXT@
++
++# Executables
++f 0555 root sys ${bindir}/mxmldoc mxmldoc
++
++# Header files
++f 0444 root sys ${includedir}/mxml.h mxml.h
++
++# Libraries
++%if $PICFLAG
++%system hpux
++f 0555 root sys ${libdir}/libmxml.sl.1 libmxml.sl.1
++l 0555 root sys ${libdir}/libmxml.sl libmxml.sl.1
++
++%system dylib
++f 0555 root sys ${libdir}/libmxml.1.dylib libmxml.1.dylib
++l 0555 root sys ${libdir}/libmxml.dylib libmxml.1.dylib
++
++%system freebsd irix linux netbsd openbsd solaris tru64
++f 0555 root sys ${libdir}/libmxml.so.1.0 libmxml.so.1.0
++l 0555 root sys ${libdir}/libmxml.sl.1 libmxml.sl.1.0
++l 0555 root sys ${libdir}/libmxml.sl libmxml.sl.1.0
++
++%system all
++%endif
++
++f 0444 root sys ${libdir}/libmxml.a libmxml.a
++
++# pkg-config info
++f 0444 root sys $(libdir)/pkgconfig/mxml.pc mxml.pc
++
++# Documentation
++f 0444 root sys ${docdir}/README $srcdir/README
++f 0444 root sys ${docdir}/COPYING $srcdir/COPYING
++f 0444 root sys ${docdir}/CHANGES $srcdir/CHANGES
++f 0444 root sys ${docdir}/mxml.html $srcdir/doc/mxml.html
++f 0444 root sys ${docdir}/mxml.pdf $srcdir/doc/mxml.pdf
++
++# Man pages
++f 0444 root sys ${mandir}/cat1/mxmldoc.$CAT1EXT $srcdir/mxmldoc.$CAT1EXT
++f 0444 root sys ${mandir}/man1/mxmldoc.$MAN1EXT $srcdir/mxmldoc.man
++f 0444 root sys ${mandir}/cat3/mxml.$CAT3EXT $srcdir/mxml.$CAT3EXT
++f 0444 root sys ${mandir}/man3/mxml.$MAN3EXT $srcdir/mxml.man
++
++#
++# End of "$Id: mxml.list.in 22267 2006-04-24 17:11:45Z kpfleming $".
++#
+diff -urN asterisk-12.1.1/menuselect/mxml/mxml.pc asterisk-12.1.1-opus/menuselect/mxml/mxml.pc
+--- asterisk-12.1.1/menuselect/mxml/mxml.pc     1969-12-31 19:00:00.000000000 -0500
++++ asterisk-12.1.1-opus/menuselect/mxml/mxml.pc        2014-04-02 08:16:10.673999915 -0400
+@@ -0,0 +1,10 @@
++prefix=/usr/local
++exec_prefix=/usr/local
++libdir=${exec_prefix}/lib
++includedir=${prefix}/include
++
++Name: Mini-XML
++Description: Lightweight XML support library
++Version: 2.2.2
++Libs: -L${exec_prefix}/lib -lmxml
++Cflags: -I${prefix}/include
+diff -urN asterisk-12.1.1/res/res_rtp_asterisk.c asterisk-12.1.1-opus/res/res_rtp_asterisk.c
+--- asterisk-12.1.1/res/res_rtp_asterisk.c      2014-02-27 17:15:11.000000000 -0500
++++ asterisk-12.1.1-opus/res/res_rtp_asterisk.c 2014-04-02 08:05:31.004999918 -0400
+@@ -2683,6 +2683,41 @@
+                return 0;
+        }
+ 
++       /* VP8: is this a request to send a RTCP FIR? */
++       if(frame->frametype == AST_FRAME_CONTROL && frame->subclass.integer == AST_CONTROL_VIDUPDATE) {
++               ast_log(LOG_WARNING, "res_rtp_asterisk, requested to send a RTCP FIR packet to the peer\n");
++               struct ast_rtp *rtp = ast_rtp_instance_get_data(instance);
++               if (!rtp || !rtp->rtcp)
++                       return 0;
++               unsigned int *rtcpheader;
++               char bdata[1024];
++               if (ast_sockaddr_isnull(&rtp->rtcp->them)) {
++                       /*
++                        * RTCP was stopped.
++                        */
++                       return 0;
++               }
++               /* Prepare RTCP FIR (PT=206, FMT=4) */
++               rtp->rtcp->firseq++;
++               if(rtp->rtcp->firseq == 256)
++                       rtp->rtcp->firseq = 0;
++               int len = 20;
++               int ice;
++               rtcpheader = (unsigned int *)bdata;
++               rtcpheader[0] = htonl((2 << 30) | (4 << 24) | (RTCP_PT_PSFB << 16) | ((len/4)-1));
++               rtcpheader[1] = htonl(rtp->ssrc);
++               rtcpheader[2] = htonl(rtp->themssrc);
++               rtcpheader[3] = htonl(rtp->themssrc);   /* FCI: SSRC */
++               rtcpheader[4] = htonl(rtp->rtcp->firseq << 24);                 /* FCI: Sequence number */
++               int res = rtcp_sendto(instance, (unsigned int *)rtcpheader, len, 0, &rtp->rtcp->them, &ice);
++               if (res < 0) {
++                       ast_log(LOG_ERROR, "RTCP FIR transmission error: %s\n",strerror(errno));
++                       return 0;
++               }
++               ast_log(LOG_WARNING, " >> RTCP FIR packet sent to the peer!\n");
++               return 0;
++       }
++
+        /* If there is no data length we can't very well send the packet */
+        if (!frame->datalen) {
+                ast_debug(1, "Received frame with no data for RTP instance '%p' so dropping frame\n", instance);
+diff -urN asterisk-12.1.1/.version asterisk-12.1.1-opus/.version
+--- asterisk-12.1.1/.version    2014-03-10 12:47:00.000000000 -0400
++++ asterisk-12.1.1-opus/.version       1969-12-31 19:00:00.000000000 -0500
+@@ -1 +0,0 @@
+-12.1.1

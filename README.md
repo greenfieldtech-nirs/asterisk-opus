@@ -14,9 +14,11 @@ To support Opus, you'll need to install [libopus](http://www.opus-codec.org/down
 
 The patch was built on top of Asterisk 11.1.2: applying it on different versions may or may not work out of the box, but solving conflicts shouldn't be too hard anyway. Copy it in the Asterisk source folder and apply it:
 
-	**For Asterisk 11.1.2:** patch -p1 -u < asterisk-11.1.2_opus+vp8.diff
+	**For Asterisk 11.1.2:** patch -p1 -u < asterisk-11.1.2-opus+vp8.patch
 
-	**For Asterisk 11.8.2:** patch -p1 -u < asterisk-11.8.1_opus+vp8.diff
+	**For Asterisk 11.8.2:** patch -p1 -u < asterisk-11.8.1-opus+vp8.patch
+
+	**For Asterisk 12.1.1:** patch -p1 -u < asterisk-12.1.1-opus+vp8.patch
 
 Run the bootstrap script to regenerate the configure:
 
