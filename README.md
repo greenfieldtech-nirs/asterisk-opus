@@ -1,3 +1,5 @@
+#*** This is now discontinued - please refer to [@seanbright](https://github.com/seanbright/asterisk-opus) for an updated version ***
+
 #Asterisk Opus/VP8 patches
 ==========================
 
